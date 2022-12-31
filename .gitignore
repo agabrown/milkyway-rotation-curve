@@ -1,3 +1,17 @@
+*.png
+img/*.png
+img/*.pdf
+*.swp
+data/*.fits
+data/*.vot
+data/*.csv
+mwdisk*model
+mwdisk*model.hpp
+*json
+
+# Include following
+!img/DiskKinematicsVrad.png
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
