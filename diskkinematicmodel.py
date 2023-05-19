@@ -1,7 +1,7 @@
 """
 Classes and functions that implement a very simple kinematic model for the Milky Way disk. This assumes stars describe strictly circular orbits around the vertical axis of the Milky Way disk plane. Thus in galactocentric cylindrical coordinates the velocity vectors of the stars are (V_R, V_phi, V_z) = (0, V_phi(R), 0), where V_phi(R) is the rotation curve of the disk. The velocity field does not change with z.
 
-Anthony Brown Feb 2022 - Dec 2022
+Anthony Brown Feb 2022 - May 2023
 """
 
 import numpy as np
@@ -123,12 +123,12 @@ class SlopedRotationCurve(RotationCurve):
         vcircsun: float
             Circular velocity at the position of the sun in km/s.
         rsun: float
-            Galactocentric distance of the Sun in pc.
+            Galactocentric distance of the Sun in kpc.
         slope: float
             Value of dVc(R)/dR in km/s/kpc
         """
         self.vcircsun = vcircsun * u.km / u.s
-        self.rsun = rsun * u.pc
+        self.rsun = rsun * u.kpc
         self.slope = slope * u.km / u.s / u.kpc
 
     def circular_velocity(self, q):
@@ -160,17 +160,17 @@ class SolidBodyRotationCurve(RotationCurve):
         vcircsun: float
             Circular velocity at the position of the Sun in km/s.
         rsun: float
-            Galactocentric distance of the Sun in pc.
+            Galactocentric distance of the Sun in kpc.
         """
         self.vcircsun = vcircsun * u.km / u.s
-        self.rsun = rsun * u.pc
+        self.rsun = rsun * u.kpc
 
     def circular_velocity(self, q):
-        rq = np.sqrt(q[0] ** 2 + q[1] ** 2).to(u.pc)
+        rq = np.sqrt(q[0] ** 2 + q[1] ** 2).to(u.kpc)
         return self.vcircsun * (rq / self.rsun).value
 
     def oort_ab(self, q):
-        return 0.0 * u.km / u.s / u.kpc, -self.vcircsun / self.rsun.to(u.kpc)
+        return 0.0 * u.km / u.s / u.kpc, -self.vcircsun / self.rsun
 
     def addinfo(self):
         return f"Solid body rotation curve\n vcircsun={self.vcircsun}, Rsun={self.rsun}"
@@ -191,22 +191,22 @@ class BrunettiPfennigerRotationCurve(RotationCurve):
         vcircsun: float
             Circular velocity at the position of the Sun in km/s.
         rsun: float
-            Galactocentric distance of the Sun in pc.
+            Galactocentric distance of the Sun in kpc.
         h : float
             Potential scale length in kpc
         p : float
             Exponent p in rotation curve equation
         """
         self.vcircsun = vcircsun * u.km / u.s
-        self.rsun = rsun * u.pc
+        self.rsun = rsun * u.kpc
         self.h = h * u.kpc
         self.p = p
         self.v0 = (
             self.vcircsun
             / (
-                self.rsun.to(u.kpc)
+                self.rsun
                 / self.h
-                * np.power(1 + (self.rsun.to(u.kpc) / self.h) ** 2, (self.p - 2) / 4)
+                * np.power(1 + (self.rsun / self.h) ** 2, (self.p - 2) / 4)
             )
         ).to(u.km / u.s)
 
@@ -228,6 +228,35 @@ class BrunettiPfennigerRotationCurve(RotationCurve):
         )
         oortA = 0.5 * (self.circular_velocity(q) / rq - dvdr)
         oortB = 0.5 * (-self.circular_velocity(q) / rq - dvdr)
+        return oortA, oortB
+
+    @staticmethod
+    def oort_ab_static(rcyl, vc, hbp, pbp):
+        """
+        Calculate the Oort A and B constants for the specific input parameters.
+
+        Parameters
+        ----------
+        rcyl : float array-like
+            Distance R from Galactic centre in cylindrical coordinates (kpc).
+        vc : float array-like
+            Circular velocity at the position of the sun (km/s).
+        hbp : float, array-like
+            Scale length of potential (kpc).
+        pbp: float, array-like
+            Shape parameter for potential.
+        """
+        rhsqr = rcyl * rcyl / (hbp * hbp)
+        rhterm = 1.0 + rhsqr
+        vv0 = vc / (rcyl / hbp * np.power(1 + rhterm, (pbp - 2) / 4))
+        dvdr = (
+            vv0
+            / hbp
+            * np.power(rhterm, (pbp - 2) / 4)
+            * (1.0 + (pbp - 2) / 2 * rhsqr * np.power(rhterm, -1))
+        )
+        oortA = 0.5 * (vc / rcyl - dvdr)
+        oortB = 0.5 * (-vc / rcyl - dvdr)
         return oortA, oortB
 
     def addinfo(self):

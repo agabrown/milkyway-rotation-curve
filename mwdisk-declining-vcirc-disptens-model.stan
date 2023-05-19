@@ -147,8 +147,8 @@ parameters {
   real Vsun_pec_x;             // Peculiar velocity of Sun in Galactocentric Cartesian X
   real Vsun_pec_y;             // Peculiar velocity of Sun in Galactocentric Cartesian Y
   real Vsun_pec_z;             // Peculiar velocity of Sun in Galactocentric Cartesian Z
-  real vdispxy;                // Velocity dispersion around circular motion in XY
-  real vdispz;                 // Velocity dispersion around circular motion in Z
+  real<lower=0> vdispxy;                // Velocity dispersion around circular motion in XY
+  real<lower=0> vdispz;                 // Velocity dispersion around circular motion in Z
 }
 
 transformed parameters {

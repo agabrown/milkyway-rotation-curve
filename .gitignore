@@ -5,10 +5,15 @@ img/*.pdf
 data/*.fits
 data/*.vot
 data/*.csv
+data/*.dat
 mwdisk*model
 mwdisk*model.hpp
+mwdisk*rphiz
+mwdisk*rphiz.hpp
 *json
 Literature/
+stan-outputs/
+Scratch.ipynb
 
 # Include following
 !img/DiskKinematicsVrad.png

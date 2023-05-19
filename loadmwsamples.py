@@ -14,7 +14,7 @@ import numpy as np
 from astropy.table import Table
 import astropy.units as u
 import astropy.constants as c
-from astropy.coordinates import Galactocentric, ICRS, CartesianDifferential
+from astropy.coordinates import ICRS
 
 au_km_year_per_sec = (c.au / (1 * u.yr).to(u.s)).to(u.km / u.s).value
 
@@ -182,17 +182,6 @@ def load_mwtable(
         vsunpec=vsunpeculiar,
     )
 
-    l, b = ct.transform_sky_coordinates(
-        np.deg2rad(gaiatable["ra"]), np.deg2rad(gaiatable["dec"])
-    )
-    gaiatable["l"] = np.rad2deg(l)
-    gaiatable["b"] = np.rad2deg(b)
-    gaiatable["pml"], gaiatable["pmb"] = ct.transform_proper_motions(
-        np.deg2rad(gaiatable["ra"]),
-        np.deg2rad(gaiatable["dec"]),
-        gaiatable["pmra"],
-        gaiatable["pmdec"],
-    )
     (
         gaiatable["pml_error"],
         gaiatable["pmb_error"],
@@ -222,9 +211,7 @@ def load_mwtable(
     #
     gaiatable["R_gc"] = galactocentric_cylindrical.rho
     phi = galactocentric_cylindrical.phi.to(u.deg)
-    gaiatable["phi_gc"] = (
-        np.where(phi < 0 * u.deg, phi + 360 * u.deg, phi.to(u.deg)) * u.deg
-    )
+    gaiatable["phi_gc"] = np.where(phi < 0 * u.deg, phi + 360 * u.deg, phi)
     gaiatable["v_R_gc"] = galactocentric_cylindrical.d_rho.to(u.km / u.s)
     #
     # In the literature vphi is calculated for a left-handed coordinate system!
