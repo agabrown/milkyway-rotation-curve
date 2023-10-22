@@ -181,7 +181,7 @@ parameters {
 transformed parameters {
   array[N] vector[2] model_pm;
   cov_matrix[3] scov;          // Model covariance matrix for velocity dispersions
-  cov_matrix[3] scov_cyl; // Covariance matrix in cylindrical coordinates (diagonal)
+  cov_matrix[3] scov_cyl;      // Covariance matrix in cylindrical coordinates (diagonal)
   array[N] cov_matrix[2] dcov; // Total covariance matrix (observational uncertainties plus velocity dispersion)
   real v0;
 
@@ -189,7 +189,7 @@ transformed parameters {
   model_pm = predicted_proper_motions(plx_obs, Rstar, phistar, pvec, qvec, rvec, 
         auKmYearPerSec, Rsun, [Vsun_pec_x, Vsun_pec_y, Vsun_pec_z]', Vcirc_sun, v0, hbp, pbp);
 
-  scov_cyl = diag_matrix([vdispR^2, vdispPhi^2, vdispZ^2]');;
+  scov_cyl = diag_matrix([vdispR^2, vdispPhi^2, vdispZ^2]');
 
   for (n in 1:N) {
     scov = quad_form_sym(scov_cyl, J[n]');

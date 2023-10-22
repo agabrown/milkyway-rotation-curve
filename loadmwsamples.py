@@ -25,9 +25,9 @@ from diskkinematicmodel import *
 ct = CoordinateTransformation(Transformations.ICRS2GAL)
 
 # Default Milky Way parameters, Rsun from Gravity Collboration et al. (2022), zsun from Bennet & Bovy (2019), vsun_peculiar from Schoenrich et al. (2010), vcirc_sun from MWPotential2014 model (Bovy 2015).
-_Rsun = 8277.0 * u.pc
-_zsun = 20.8 * u.pc
-_sunpos = np.array([-_Rsun.value, 0, _zsun.value]) * u.pc
+_Rsun = 8.277 * u.kpc
+_zsun = 20.8e-3 * u.kpc
+_sunpos = np.array([-_Rsun.value, 0, _zsun.value]) * u.kpc
 _vsunpeculiar = np.array([11.1, 12.24, 7.25]) * u.km / u.s
 _vcircsun = 219.23 * u.km / u.s
 
@@ -164,7 +164,7 @@ def load_mwtable(
     icrs_coords = ICRS(
         ra=(gaiatable["ra"].data * u.deg).to(u.rad),
         dec=(gaiatable["dec"].data * u.deg).to(u.rad),
-        distance=(1000 / gaiatable["parallax"].data) * u.pc,
+        distance=(1.0 / gaiatable["parallax"].data) * u.kpc,
         pm_ra_cosdec=gaiatable["pmra"].data * u.mas / u.yr,
         pm_dec=gaiatable["pmdec"].data * u.mas / u.yr,
         radial_velocity=vrad * u.km / u.s,

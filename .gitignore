@@ -1,6 +1,9 @@
 *.png
 img/*.png
 img/*.pdf
+img/*.out
+img/*.log
+img/*.aux
 *.swp
 data/*.fits
 data/*.vot
@@ -17,6 +20,7 @@ Scratch.ipynb
 
 # Include following
 !img/DiskKinematicsVrad.png
+!img/rotcurve-pgm.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

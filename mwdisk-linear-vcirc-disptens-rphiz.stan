@@ -7,7 +7,7 @@
  * The free parameters are:
  *
  *  Vcirc_sun: circular velocity at the location of the sun (positive value by convention, km/s)
- *  dVcirc_dVr: gradient in circular velocity (km/s/kpc)
+ *  dVcirc_dR: gradient in circular velocity (km/s/kpc)
  *  Vsun_pec_x: peculiar motion of the sun in Cartesian galactocentric X (km/s)
  *  Vsun_pec_y: peculiar motion of the sun in Cartesian galactocentric Y (km/s)
  *  Vsun_pec_z: peculiar motion of the sun in Cartesian galactocentric Z (km/s)
@@ -28,14 +28,14 @@
  * A right handed coordinate system is used in which (X,Y,Z)_sun = (-Rsun, Ysun, Zsun)
  * and Vphi(sun) = -Vcirc(sun).
  *
- * Anthony Brown May 2023 - May 2023
+ * Anthony Brown May 2023 - Sep 2023
  * <brown@strw.leidenuniv.nl>
  */
 
 functions{
   array[] vector predicted_proper_motions(vector plx, vector Rstar, vector phi, 
         array[] vector p, array[] vector q, array[] vector r,
-        real Av, real Rsun, vector Vsun_pec, real Vcirc_sun, real dVcirc_dVr) {
+        real Av, real Rsun, vector Vsun_pec, real Vcirc_sun, real dVcirc_dR) {
     /*
      * Using a simple Milky Way disk kinematics model, predict observed proper motions. This version also returns the value of the Galactocentric cylindrical coordinate Phi for each star. This is needed for the velocity dispersion covariance matrix transformation.
      *
@@ -43,7 +43,7 @@ functions{
      *  plx: vector of size N
      *   Observed parallax (mas)
      *  Rstar: vector of size N
-     *   Value of galactocentric cylindrical coordinate R, inferred from parallax and sky position.
+     *   Value of galactocentric cylindrical coordinate R, inferred from parallax and sky position (kpc).
      *  phi: vector of size N
      *   Value of galactocentric cylindrical coordinate phi, inferred from parallax and sky position.
      *  p, q, r: arrays of size N of 3-vectors
@@ -51,12 +51,12 @@ functions{
      *  Av: real
      *    Value of the constant relating velocity and proper motion units (4.74... km*yr/s)
      *  Rsun: real
-     *    distance of sun to Galactic centre (pc)
+     *    distance of sun to Galactic centre (kpc)
      *  Vsun_pec: vector of size 3
      *    Galactocentric Cartesian peculiar velocity of the sun (km/s)
      *  Vcirc_sun: real
      *    Circular velocity at the position of the sun (km/s, positive)
-     *  dVcirc_dVr: real
+     *  dVcirc_dR: real
      *    Gradient of the circular velocity (km/s/kpc, positive)
      *
      * Returns 
@@ -69,7 +69,7 @@ functions{
     real vphistar;
 
     for (i in 1:size(plx)) {
-      vphistar = -(Vcirc_sun + dVcirc_dVr*(Rstar[i]-Rsun)/1000.0);
+      vphistar = -(Vcirc_sun + dVcirc_dR*(Rstar[i]-Rsun));
       vdiff = [-vphistar*sin(phi[i]), vphistar*cos(phi[i]), 0.0]' - vsun;
       predicted_pm[i][1] = dot_product(p[i], vdiff) * plx[i] / Av;
       predicted_pm[i][2] = dot_product(q[i], vdiff) * plx[i] / Av;
@@ -89,8 +89,8 @@ data {
   vector[N] pmb_obs_unc;
   vector[N] pml_pmb_corr;
   vector[N] plx_obs;
-  real Rsun;              // Distance from Sun to Galactic centre (pc), used as fixed parameter
-  real Zsun;              // Sun's height above the Galactic plane (pc), used as fixed parameter
+  real Rsun;              // Distance from Sun to Galactic centre (kpc), used as fixed parameter
+  real Zsun;              // Sun's height above the Galactic plane (kpc), used as fixed parameter
 }
 
 transformed data {
@@ -99,8 +99,8 @@ transformed data {
   // Parameters for priors
   real Vcirc_sun_prior_mean = 220.0;
   real Vcirc_sun_prior_sigma = 50.0;
-  real dVcirc_dVr_prior_mean = 0.0;
-  real dVcirc_dVr_prior_sigma = 10.0;
+  real dVcirc_dR_prior_mean = 0.0;
+  real dVcirc_dR_prior_sigma = 10.0;
   real Vsun_pec_x_prior_mean = 11.0;
   real Vsun_pec_y_prior_mean = 12.0;
   real Vsun_pec_z_prior_mean = 7.0;
@@ -123,6 +123,7 @@ transformed data {
   vector[N] phistar;
   vector[3] starpos;
   vector[3] sunpos = [-Rsun, Ysun, Zsun]';
+  array[N] matrix[3,3] J;
 
   for (n in 1:N) {
     cov_pm[n][1,1] = pml_obs_unc[n]^2;
@@ -145,52 +146,49 @@ transformed data {
     rvec[n][2] = cos(galat[n])*sin(galon[n]);
     rvec[n][3] = sin(galat[n]);
 
-    starpos = (1000.0/plx_obs[n])*rvec[n] + sunpos;
+    starpos = (1.0/plx_obs[n])*rvec[n] + sunpos;
     Rstar[n] = sqrt(starpos[1]^2+starpos[2]^2);
     phistar[n] = atan2(starpos[2], starpos[1]);
+
+    J[n][1,3] = 0.0;
+    J[n][2,3] = 0.0;
+    J[n][3,1] = 0.0;
+    J[n][3,2] = 0.0;
+    J[n][3,3] = 1.0;
+    J[n][1,1] = cos(phistar[n]);
+    J[n][2,2] = cos(phistar[n]);
+    J[n][1,2] = -sin(phistar[n]);
+    J[n][2,1] = sin(phistar[n]);
   }
 }
 
 parameters {
-  real Vcirc_sun;          // Circular velocity at the sun's position
-  real dVcirc_dVr;         // Gradient of the circular velocity
-  real Vsun_pec_x;         // Peculiar velocity of Sun in Galactocentric Cartesian X
-  real Vsun_pec_y;         // Peculiar velocity of Sun in Galactocentric Cartesian Y
-  real Vsun_pec_z;         // Peculiar velocity of Sun in Galactocentric Cartesian Z
-  real<lower=0> vdispR;    // Velocity dispersion around circular motion in R direction
-  real<lower=0> vdispPhi;  // Velocity dispersion around circular motion in Phi direction
-  real<lower=0> vdispZ;    // Velocity dispersion around circular motion in Z direction
+  real Vcirc_sun;          // Circular velocity at the sun's position (km/s)
+  real dVcirc_dR;          // Gradient of the circular velocity (km/s/kpc)
+  real Vsun_pec_x;         // Peculiar velocity of Sun in Galactocentric Cartesian X (km/s)
+  real Vsun_pec_y;         // Peculiar velocity of Sun in Galactocentric Cartesian Y (km/s)
+  real Vsun_pec_z;         // Peculiar velocity of Sun in Galactocentric Cartesian Z (km/s)
+  real<lower=0> vdispR;    // Velocity dispersion around circular motion in R direction (km/s)
+  real<lower=0> vdispPhi;  // Velocity dispersion around circular motion in Phi direction (km/s)
+  real<lower=0> vdispZ;    // Velocity dispersion around circular motion in Z direction (km/s)
 }
 
 transformed parameters {
   array[N] vector[2] model_pm;
   cov_matrix[3] scov;          // Model covariance matrix for velocity dispersions
+  cov_matrix[3] scov_cyl;      // Covariance matrix in cylindrical coordinates (diagonal)
   array[N] cov_matrix[2] dcov; // Total covariance matrix (observational uncertainties plus velocity dispersion)
-  real vdispRSqr, vdispPhiSqr;
 
   model_pm = predicted_proper_motions(plx_obs, Rstar, phistar, pvec, qvec, rvec, 
-        auKmYearPerSec, Rsun, [Vsun_pec_x, Vsun_pec_y, Vsun_pec_z]', Vcirc_sun, dVcirc_dVr);
-
-  scov[1,1] = 1.0;
-  scov[2,2] = 1.0;
-  scov[3,3] = vdispZ^2;
-  scov[1,2] = 0.0;
-  scov[1,3] = 0.0;
-  scov[2,3] = 0.0;
-  scov[2,1] = scov[1,2];
-  scov[3,1] = scov[1,3];
-  scov[3,2] = scov[2,3];
-
-  vdispRSqr = vdispR^2;
-  vdispPhiSqr = vdispPhi^2;
+        auKmYearPerSec, Rsun, [Vsun_pec_x, Vsun_pec_y, Vsun_pec_z]', Vcirc_sun, dVcirc_dR);
+  
+  scov_cyl = diag_matrix([vdispR^2, vdispPhi^2, vdispZ^2]');
+  
   for (n in 1:N) {
-    scov[1,1] = vdispRSqr*cos(phistar[n])^2 + vdispPhiSqr*sin(phistar[n])^2;
-    scov[2,2] = vdispRSqr*sin(phistar[n])^2 + vdispPhiSqr*cos(phistar[n])^2;
-    scov[1,2] = sin(phistar[n])*cos(phistar[n])*(vdispRSqr-vdispPhiSqr);
-    scov[2,1] = scov[1,2];
+    scov = quad_form_sym(scov_cyl, J[n]');
     dcov[n][1,1] = dot_product(pvec[n], scov*pvec[n]); 
     dcov[n][2,1] = dot_product(qvec[n], scov*pvec[n]); 
-    dcov[n][1,2] = dot_product(pvec[n], scov*qvec[n]); 
+    dcov[n][1,2] = dcov[n][2,1];                           //dot_product(pvec[n], scov*qvec[n]); 
     dcov[n][2,2] = dot_product(qvec[n], scov*qvec[n]);
     dcov[n] = cov_pm[n] + (plx_obs[n]/auKmYearPerSec)^2 * dcov[n];
   }
@@ -199,13 +197,10 @@ transformed parameters {
 
 model {
   Vcirc_sun ~ normal(Vcirc_sun_prior_mean, Vcirc_sun_prior_sigma);
-  dVcirc_dVr ~ normal(dVcirc_dVr_prior_mean, dVcirc_dVr_prior_sigma);
+  dVcirc_dR ~ normal(dVcirc_dR_prior_mean, dVcirc_dR_prior_sigma);
   Vsun_pec_x ~ normal(Vsun_pec_x_prior_mean, Vsun_pec_x_prior_sigma);
   Vsun_pec_y ~ normal(Vsun_pec_y_prior_mean, Vsun_pec_y_prior_sigma);
   Vsun_pec_z ~ normal(Vsun_pec_z_prior_mean, Vsun_pec_z_prior_sigma);
-  //vdispR ~ gamma(vdisp_prior_alpha, vdisp_prior_beta);
-  //vdispPhi ~ gamma(vdisp_prior_alpha, vdisp_prior_beta);
-  //vdispZ ~ gamma(vdisp_prior_alpha, vdisp_prior_beta);
   vdispR ~ uniform(0,200);
   vdispPhi ~ uniform(0,200);
   vdispZ ~ uniform(0,200);
