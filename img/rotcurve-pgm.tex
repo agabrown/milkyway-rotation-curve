@@ -43,19 +43,20 @@
 \tikzstyle{flowboth0}=[<->, shorten >=0pt, shorten <=0pt, >=stealth', thick, color=black]
 
 \tikzstyle{sampled}=[shape=circle, draw=black, thick, minimum size=1.5cm]
+\tikzstyle{deterministic}=[shape=circle, draw=black, thick, dashed, minimum size=1.5cm]
 \tikzstyle{fixed}=[shape=circle, fill=black, minimum size=3mm, inner sep=0pt]
 \tikzstyle{observed}=[shape=circle, draw=black, fill=black!40!white, thick, minimum size=1.5cm]
 
 \begin{document}
 \begin{tikzpicture}[scale=2.5, every path/.style=flow0]
     \node[observed] (pmobs) at (1.5,1.5) {$\boldsymbol{\mu}_i$};
-    \node[sampled] (dcov) at (2.5,1.0) {$\mathsf{D}_i$};
+    \node[deterministic] (dcov) at (2.5,1.0) {$\mathsf{D}_i$};
     \node[fixed] (covpm) at (3.5,1.0) [label={$\mathsf{C}_{\boldsymbol{\mu},i}$}] {};
-    \node[sampled] (vstar) at (1.5,3) {$\mathbf{v}_i$};
+    \node[deterministic] (vstar) at (1.5,3) {$\mathbf{v}_i$};
     \node[fixed] (posplx) at (3,3) [label={$(\ell_i, b_i, \varpi_i)$}] {};
-    \node[sampled] (scov) at (3.5,1.75) {$\mathsf{S}_i$};
+    \node[deterministic] (scov) at (3.5,1.75) {$\mathsf{S}_i$};
     \node[sampled] (vcircsun) at (0.5,4) {$v_{\mathrm{circ},\odot}$};
-    \node[sampled] (vsun) at (0.5,2.5) {$\mathbf{v}_\odot$};
+    \node[deterministic] (vsun) at (0.5,2.5) {$\mathbf{v}_\odot$};
     \node[sampled] (theta) at (1.5,4) {$\boldsymbol{\theta}$};
     \node[fixed] (rzsun) at (3.5,4) [label={$(R_\odot, z_\odot)$}] {};
     \node[sampled] (vpecsun) at (0.5,1.5) {$\mathbf{v}_{\mathrm{pec},\odot}$};
@@ -63,7 +64,7 @@
     \node[sampled] (sigmaphi) at(4.5,1.75) {$\sigma_\phi$};
     \node[sampled] (sigmaz) at (4.5, 0.75) {$\sigma_z$};
 
-    \draw ($(vstar.north west)+(-0.3,0.3)$) rectangle ($(covpm.south east)+(0.3,-0.5)$) node[above left]{sources $i=1,\ldots, N$};
+    \draw ($(vstar.north west)+(-0.3,0.3)$) rectangle ($(covpm.south east)+(0.4,-0.5)$) node[above left]{sources $i=1,\ldots, N$};
 
     \draw (dcov) -- (pmobs);
     \draw (covpm) -- (dcov);
