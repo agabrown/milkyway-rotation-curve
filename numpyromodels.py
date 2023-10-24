@@ -147,9 +147,16 @@ def propermotion_covariance_matrix(plx, p, q, vdispR, vdispPhi, vdispZ, phi, obs
     return dcovtemp + obscov
 
 
-def linear_vcirc_disptens_rphiz(
-    nstars, p, q, r, plx_obs, Rsun, Zsun, cov_pm, pm_obs=None
-):
+def linear_vcirc_priors():
+    """
+    Model parameters for the linearly declining rotation curve and their priors.
+    """
+    dVcirc_dR_prior_mean = 0.0
+    dVcirc_dR_prior_sigma = 10.0
+    return sample("dVcirc_dR", Normal(dVcirc_dR_prior_mean, dVcirc_dR_prior_sigma))
+
+
+def linear_vcirc_disptens_rphiz(plx_obs, p, q, r, Rsun, Zsun, cov_pm, pm_obs=None):
     """
     NumPyro implementation of a simple Milky Way disk rotation model which is intended to fit observed proper motions of a sample of OBA stars.
 
@@ -169,20 +176,40 @@ def linear_vcirc_disptens_rphiz(
 
     Fixed parameters:
 
-    Rsun: Distance from sun to Galactic centre (8277 pc, GRAVITY)
+    Rsun: Distance from sun to Galactic centre
     Ysun: Position of the sun in Cartesian galactocentric Y (0 pc, by definition)
-    Zsun: Position of the sun in Cartesian galactocentric Z (20.8 pc, Bennett & Bovy)
-
-    Parallaxes uncertainties are ignored here.
+    Zsun: Position of the sun in Cartesian galactocentric Z
+    Position (l,b) (or equivalently, the normal triad [p,q,r]) and parallax of the stars: parallax uncertainties are ignored
 
     A right handed coordinate system is used in which (X,Y,Z)_sun = (-Rsun, Ysun, Zsun) and Vphi(sun) = -Vcirc(sun).
+
+    Parameters
+    ----------
+
+    plx_obs : array-like
+        List of parallax values [mas] (shape (N,))
+    p, q, r : array-like
+        Vector of the normal triad (shape (N,3))
+    Rsun : float
+        Distance from Sun to Galactic centre (kpc)
+    Zsun : float
+        Height of Sun above Galactic plane (kpc)
+    cov_pm : array-like
+        Covariance matrix of the observed proper motions in Galactic coordinates (shape (N,2,2))
+    pm_obs : array-like
+        Observed proper motions in Galactic coordinates (shape (N,2))
+
+    Returns
+    -------
+
+    Nothing
     """
 
     # Parameters for priors
     Vcirc_sun_prior_mean = 220.0
     Vcirc_sun_prior_sigma = 50.0
-    dVcirc_dR_prior_mean = 0.0
-    dVcirc_dR_prior_sigma = 10.0
+    # dVcirc_dR_prior_mean = 0.0
+    # dVcirc_dR_prior_sigma = 10.0
     Vsun_pec_x_prior_mean = 11.0
     Vsun_pec_y_prior_mean = 12.0
     Vsun_pec_z_prior_mean = 7.0
@@ -191,7 +218,8 @@ def linear_vcirc_disptens_rphiz(
 
     # Priors
     Vcirc_sun = sample("Vcirc_sun", Normal(Vcirc_sun_prior_mean, Vcirc_sun_prior_sigma))
-    dVcirc_dR = sample("dVcirc_dR", Normal(dVcirc_dR_prior_mean, dVcirc_dR_prior_sigma))
+    # dVcirc_dR = sample("dVcirc_dR", Normal(dVcirc_dR_prior_mean, dVcirc_dR_prior_sigma))
+    dVcirc_dR = linear_vcirc_priors()
     Vsun_pec_x = sample(
         "Vsun_pec_x", Normal(Vsun_pec_x_prior_mean, Vsun_pec_prior_sigma)
     )
@@ -225,5 +253,5 @@ def linear_vcirc_disptens_rphiz(
     )
 
     # Likelihood
-    with numpyro.plate("data", nstars):
+    with numpyro.plate("data", plx_obs.size):
         numpyro.sample("obs", MultivariateNormal(model_pm, dcov), obs=pm_obs)
