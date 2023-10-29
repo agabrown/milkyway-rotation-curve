@@ -10,10 +10,29 @@ from numpyro import sample
 from numpyro.distributions import (
     Uniform,
     Normal,
+    LogNormal,
     MultivariateNormal,
 )
 
+from abc import ABC, abstractmethod
+
 from pygaia.astrometry.constants import au_km_year_per_sec
+
+from diskkinematicmodel import (
+    BrunettiPfennigerRotationCurve,
+    DiskKinematicModel,
+    SlopedRotationCurve,
+)
+
+_generic_param_labels = {
+    "Vcirc_sun": r"$v_{\mathrm{circ},\odot}$",
+    "Vsun_pec_x": r"$v_{x,\odot}(\mathrm{pec})$",
+    "Vsun_pec_y": r"$v_{y,\odot}(\mathrm{pec})$",
+    "Vsun_pec_z": r"$v_{z,\odot}(\mathrm{pec})$",
+    "vdispPhi": r"$\sigma_{v,\phi}$",
+    "vdispR": r"$\sigma_{v,R}$",
+    "vdispZ": r"$\sigma_{v,z}$",
+}
 
 
 def predicted_proper_motions(plx, p, q, phi, vphi, vSun):
@@ -147,23 +166,230 @@ def propermotion_covariance_matrix(plx, p, q, vdispR, vdispPhi, vdispZ, phi, obs
     return dcovtemp + obscov
 
 
-def linear_vcirc_priors():
+class RotationCurve(ABC):
     """
-    Model parameters for the linearly declining rotation curve and their priors.
+    Abstract class to be subclassed by classes implementing a specific rotation curve and the priors on its parameters. The rotation curve is assumed to be of the form f_theta(R; v_circsun, Rsun), where theta the model parameters and the calculation of v_circ depends only on R, Rsun, and v_circsun.
     """
-    dVcirc_dR_prior_mean = 0.0
-    dVcirc_dR_prior_sigma = 10.0
-    return sample("dVcirc_dR", Normal(dVcirc_dR_prior_mean, dVcirc_dR_prior_sigma))
+
+    @abstractmethod
+    def get_priors(self):
+        """
+        Return a list of numpyro sample primitives each of which corresponds to a rotation curve model parameter and its prior.
+
+        Returns
+        -------
+        priors : list
+            List of numpyro sample primitives
+        """
+        pass
+
+    @abstractmethod
+    def get_vcirc(self, theta, vcircsun, Rsun, R):
+        """
+        Return the circular velocity at R.
+
+        Parameters
+        ----------
+        theta : list
+            List of model parameters (in same order as they are returned by get_priors())
+        vcirsun : float
+            Circular velocity of the sun (km/s)
+        Rsun : float
+            Distance from the sun to the Galactic centre (kpc)
+        R : array-like
+            R-coordinates of the stars (kpc)
+
+        Returns
+        -------
+        vcirc : array-like
+            Array of circular velocity values (km/s)
+        """
+
+    @abstractmethod
+    def get_spec_param_label_map(self):
+        """
+        Get the mapping from parameter names to plot labels for the parameters theta specific to this model.
+
+        Returns
+        -------
+        map : dict
+            Dictionary with key-value pairs representing the parameter name to label mapping.
+        """
+
+    def get_all_param_label_map(self):
+        """
+        Get the mapping from parameter names to plot labels for all model parameters, including the generic ones (solar velocities and velocity dispersions).
+
+        Returns
+        -------
+        map : dict
+            Dictionary with key-value pairs representing the parameter name to label mapping.
+        """
+        return {**_generic_param_labels, **self.get_spec_param_label_map()}
+
+    @abstractmethod
+    def get_oort_constants(self, theta, vcircsun, Rsun, R):
+        """
+        Calculate the Oort constants A and B at R for the input rotation curve parameters.
+
+        Parameters
+        ----------
+        theta : list
+            List of model parameters (in same order as they are returned by get_priors())
+        vcirsun : float
+            Circular velocity of the sun (km/s)
+        Rsun : float
+            Distance from the sun to the Galactic centre (kpc)
+        R : array-like
+            R-coordinates of the stars (kpc)
+
+        Returns
+        -------
+
+        oortA, oortB  : tuple
+            Arrays with values of Oort A and B parameters in km/s/kpc
+        """
+
+    @abstractmethod
+    def get_disk_kinematic_model(self, vcircsun, Rsun, theta, sunpos, vsunpeculiar):
+        """
+        Return an instance of diskkinematicmodel.DiskKinematicModel corresponding to this rotation curve model.
+
+        Parameters
+        ----------
+        vcircsun : float
+            Sun's circular velocity in km/s
+        Rsun : float
+            Distance from the sun to the Galactic centre (kpc)
+        theta : list
+            List of rotation curve specific model parameters (in same order as they are returned by get_priors())
+        sunpos : array
+            Sun's position as a (3,) array (in kpc).
+        vsunpeculiar : array
+            Sun's peculiar motion as a (3,) array (in km/s)
+        """
 
 
-def linear_vcirc_disptens_rphiz(plx_obs, p, q, r, Rsun, Zsun, cov_pm, pm_obs=None):
+class ConstantSlopeRotationCurve(RotationCurve):
     """
-    NumPyro implementation of a simple Milky Way disk rotation model which is intended to fit observed proper motions of a sample of OBA stars.
+    Implements the rotation curve model
+        f_theta(R) = v_circ,sun + slope*(R-Rsun)
+    """
 
-    In this model the rotation curve changes with a constant gradient as a function of distance from the galactic centre. That is,it declines (or increases) linearly with distance. The free parameters are:
+    def __init__(self):
+        """
+        Class constructor/initializer.
+        """
+        self.dVcirc_dR_prior_mean = 0.0
+        self.dVcirc_dR_prior_sigma = 10.0
+        self.slopename = "dVcirc_dR"
+
+    def get_priors(self):
+        return [
+            sample(
+                self.slopename,
+                Normal(self.dVcirc_dR_prior_mean, self.dVcirc_dR_prior_sigma),
+            )
+        ]
+
+    def get_vcirc(self, theta, vcircsun, Rsun, R):
+        return vcircsun + theta[0] * (R - Rsun)
+
+    def get_spec_param_label_map(self):
+        return {self.slopename: r"$dV_\mathrm{circ}/dV_R$"}
+
+    def get_oort_constants(self, theta, vcircsun, Rsun, R):
+        oortA = 0.5 * (self.get_vcirc(theta, vcircsun, Rsun, R) / R - theta[0])
+        oortB = -0.5 * (self.get_vcirc(theta, vcircsun, Rsun, R) / R + theta[0])
+        return oortA, oortB
+
+    def get_disk_kinematic_model(self, vcircsun, Rsun, theta, sunpos, vsunpeculiar):
+        return DiskKinematicModel(
+            SlopedRotationCurve(vcircsun, Rsun, theta[0]), sunpos, vsunpeculiar
+        )
+
+
+class BP2010RotationCurve(RotationCurve):
+    r"""
+    Implements the rotation curve model from Brunetti & Pfenniger (2010).
+
+    :math:`v_0\frac{R}{h}\left[1+\left(\frac{R}{h}\right)^2\right]^{\frac{p-2}{4}}`
+
+    where
+
+    :math:`v_0 = v_{\mathrm{circ},\odot}\left(\frac{R_\odot}{h}\left[1+\left(\frac{R_\odot}{h}\right)^2\right]^{\frac{p-2}{4}}\right)^{-1}`
+    """
+
+    def __init__(self):
+        """
+        Class constructor/initializer.
+        """
+        self.log_hbp_prior_mean = jnp.log(4.0)
+        self.log_hbp_prior_sigma = 0.5 * (jnp.log(4.0 + 1.0) - jnp.log(4.0 - 1.0))
+        self.pbp_prior_min = -1.0
+        self.pbp_prior_max = 2.0
+        self.h_name = "h"
+        self.p_name = "p"
+
+    def get_priors(self):
+        return [
+            sample(
+                self.h_name,
+                LogNormal(self.log_hbp_prior_mean, self.log_hbp_prior_sigma),
+            ),
+            sample(self.p_name, Uniform(self.pbp_prior_min, self.pbp_prior_max)),
+        ]
+
+    def get_vcirc(self, theta, vcircsun, Rsun, R):
+        v0 = vcircsun / (
+            Rsun
+            / theta[0]
+            * jnp.power(1 + jnp.power(Rsun / theta[0], 2), ((theta[1] - 2) / 4))
+        )
+        return (
+            v0
+            * R
+            / theta[0]
+            * jnp.power(1 + jnp.power(R / theta[0], 2), ((theta[1] - 2) / 4))
+        )
+
+    def get_spec_param_label_map(self):
+        return {self.h_name: r"$h$", self.p_name: r"$p$"}
+
+    def get_oort_constants(self, theta, vcircsun, Rsun, R):
+        rhsqr = R * R / (theta[0] * theta[0])
+        rhterm = 1.0 + rhsqr
+        v0 = vcircsun / (
+            Rsun
+            / theta[0]
+            * jnp.power(1 + jnp.power(Rsun / theta[0], 2), ((theta[1] - 2) / 4))
+        )
+        dvdr = (
+            v0
+            / theta[0]
+            * jnp.power(rhterm, (theta[1] - 2) / 4)
+            * (1.0 + (theta[1] - 2) / 2 * rhsqr * jnp.power(rhterm, -1))
+        )
+        oortA = 0.5 * (self.get_vcirc(theta, vcircsun, Rsun, R) / R - dvdr)
+        oortB = -0.5 * (self.get_vcirc(theta, vcircsun, Rsun, R) / R + dvdr)
+        return oortA, oortB
+
+    def get_disk_kinematic_model(self, vcircsun, Rsun, theta, sunpos, vsunpeculiar):
+        return DiskKinematicModel(
+            BrunettiPfennigerRotationCurve(vcircsun, Rsun, theta[0], theta[1]),
+            sunpos,
+            vsunpeculiar,
+        )
+
+
+def rotcurve_bayesian_model(
+    rotcurve, plx_obs, p, q, r, Rsun, Zsun, cov_pm, pm_obs=None
+):
+    """
+    NumPyro implementation of a simple Milky Way disk rotation model which is intended to fit observed proper motions of a sample of stars located close to the disk plane.
 
     Vcirc_sun: circular velocity at the location of the sun (positive value by convention, km/s)
-    dVcirc_dR: gradient in circular velocity (km/s/kpc)
+    theta: parameters of the rotation curve
     Vsun_pec_x: peculiar motion of the sun in Cartesian galactocentric X (km/s)
     Vsun_pec_y: peculiar motion of the sun in Cartesian galactocentric Y (km/s)
     Vsun_pec_z: peculiar motion of the sun in Cartesian galactocentric Z (km/s)
@@ -186,6 +412,8 @@ def linear_vcirc_disptens_rphiz(plx_obs, p, q, r, Rsun, Zsun, cov_pm, pm_obs=Non
     Parameters
     ----------
 
+    rotcurve : RotationCurve
+        Instance of RotationCurve
     plx_obs : array-like
         List of parallax values [mas] (shape (N,))
     p, q, r : array-like
@@ -206,20 +434,20 @@ def linear_vcirc_disptens_rphiz(plx_obs, p, q, r, Rsun, Zsun, cov_pm, pm_obs=Non
     """
 
     # Parameters for priors
-    Vcirc_sun_prior_mean = 220.0
-    Vcirc_sun_prior_sigma = 50.0
-    # dVcirc_dR_prior_mean = 0.0
-    # dVcirc_dR_prior_sigma = 10.0
+    log_Vcirc_sun_prior_mean = jnp.log(220.0)
+    log_Vcirc_sun_prior_sigma = 0.5 * (jnp.log(220 + 50) - jnp.log(220 - 50))
     Vsun_pec_x_prior_mean = 11.0
     Vsun_pec_y_prior_mean = 12.0
     Vsun_pec_z_prior_mean = 7.0
     Vsun_pec_prior_sigma = 20.0
-    vdisp_prior_max = 200.0
+    log_vdisp_prior_mean = jnp.log(10)
+    log_vdisp_prior_sigma = 0.5 * (jnp.log(10 + 5) - jnp.log(10 - 5))
+    theta = rotcurve.get_priors()
 
     # Priors
-    Vcirc_sun = sample("Vcirc_sun", Normal(Vcirc_sun_prior_mean, Vcirc_sun_prior_sigma))
-    # dVcirc_dR = sample("dVcirc_dR", Normal(dVcirc_dR_prior_mean, dVcirc_dR_prior_sigma))
-    dVcirc_dR = linear_vcirc_priors()
+    Vcirc_sun = sample(
+        "Vcirc_sun", LogNormal(log_Vcirc_sun_prior_mean, log_Vcirc_sun_prior_sigma)
+    )
     Vsun_pec_x = sample(
         "Vsun_pec_x", Normal(Vsun_pec_x_prior_mean, Vsun_pec_prior_sigma)
     )
@@ -229,9 +457,11 @@ def linear_vcirc_disptens_rphiz(plx_obs, p, q, r, Rsun, Zsun, cov_pm, pm_obs=Non
     Vsun_pec_z = sample(
         "Vsun_pec_z", Normal(Vsun_pec_z_prior_mean, Vsun_pec_prior_sigma)
     )
-    vdispR = sample("vdispR", Uniform(low=0, high=vdisp_prior_max))
-    vdispPhi = sample("vdispPhi", Uniform(low=0, high=vdisp_prior_max))
-    vdispZ = sample("vdispZ", Uniform(low=0, high=vdisp_prior_max))
+    vdispR = sample("vdispR", LogNormal(log_vdisp_prior_mean, log_vdisp_prior_sigma))
+    vdispPhi = sample(
+        "vdispPhi", LogNormal(log_vdisp_prior_mean, log_vdisp_prior_sigma)
+    )
+    vdispZ = sample("vdispZ", LogNormal(log_vdisp_prior_mean, log_vdisp_prior_sigma))
 
     # Calculate star position information
     Ysun = 0.0
@@ -239,7 +469,7 @@ def linear_vcirc_disptens_rphiz(plx_obs, p, q, r, Rsun, Zsun, cov_pm, pm_obs=Non
     Rstar, phistar = galactocentric_star_position(plx_obs, r, sunpos)
 
     # Rotation curve model
-    vphistar = -(Vcirc_sun + dVcirc_dR * (Rstar - Rsun))
+    vphistar = -rotcurve.get_vcirc(theta, Vcirc_sun, Rsun, Rstar)
 
     # Predicted proper motions
     vSun = jnp.array([0, Vcirc_sun, 0]) + jnp.array(
