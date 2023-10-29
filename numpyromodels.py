@@ -18,7 +18,7 @@ from abc import ABC, abstractmethod
 
 from pygaia.astrometry.constants import au_km_year_per_sec
 
-from diskkinematicmodel import (
+from diskkinematicmodels import (
     BrunettiPfennigerRotationCurve,
     DiskKinematicModel,
     SlopedRotationCurve,

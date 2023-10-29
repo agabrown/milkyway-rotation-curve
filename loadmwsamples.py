@@ -20,7 +20,7 @@ au_km_year_per_sec = (c.au / (1 * u.yr).to(u.s)).to(u.km / u.s).value
 
 from pygaia.astrometry.coordinates import Transformations, CoordinateTransformation
 from icrstogal import *
-from diskkinematicmodel import *
+from diskkinematicmodels import *
 
 ct = CoordinateTransformation(Transformations.ICRS2GAL)
 
